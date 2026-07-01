@@ -50,7 +50,7 @@ runs:
         run: docker system prune -af 
 
       - name: Build and push the image
-        uses: docker/bake-action@v6
+        uses: docker/bake-action@v7
         with:
           push: true
           targets: ${{ inputs.bake_target }}
