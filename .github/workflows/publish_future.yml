@@ -1,0 +1,86 @@
+name: Deploy future tag
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  build-aws:
+    name: Build and push future image (w/ aws cli)
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout repository code
+        uses: actions/checkout@main
+        with:
+          fetch-depth: 0
+
+      - name: Build and push future image (w/ aws cli)
+        uses: ./.github/workflows/publish
+        with:
+          bake_target: aws,aws-fips
+          aws_role_to_assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          bake_set: |
+            aws.tags=${{ secrets.PUBLIC_RUNNER_OPENTOFU_ECR_REPOSITORY_URL }}:future
+            aws.tags=ghcr.io/spacelift-io/runner-opentofu:future
+            aws-fips.tags=${{ secrets.PUBLIC_RUNNER_OPENTOFU_ECR_REPOSITORY_URL }}:future-fips
+            aws-fips.tags=ghcr.io/spacelift-io/runner-opentofu:future-fips
+
+  build-gcp:
+    name: Build and push future image (w/ gcloud cli)
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout repository code
+        uses: actions/checkout@main
+        with:
+          fetch-depth: 0
+
+      - name: Build and push future image (w/ gcloud cli)
+        uses: ./.github/workflows/publish
+        with:
+          bake_target: gcp,gcp-fips
+          aws_role_to_assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          bake_set: |
+            gcp.tags=${{ secrets.PUBLIC_RUNNER_OPENTOFU_ECR_REPOSITORY_URL }}:gcp-future
+            gcp.tags=ghcr.io/spacelift-io/runner-opentofu:gcp-future
+            gcp-fips.tags=${{ secrets.PUBLIC_RUNNER_OPENTOFU_ECR_REPOSITORY_URL }}:gcp-future-fips
+            gcp-fips.tags=ghcr.io/spacelift-io/runner-opentofu:gcp-future-fips
+
+  build-azure:
+    name: Build and push future image (w/ az cli)
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout repository code
+        uses: actions/checkout@main
+        with:
+          fetch-depth: 0
+
+      - name: Build and push future image (w/ az cli)
+        uses: ./.github/workflows/publish
+        with:
+          bake_target: azure,azure-fips
+          aws_role_to_assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          bake_set: |
+            azure.tags=${{ secrets.PUBLIC_RUNNER_OPENTOFU_ECR_REPOSITORY_URL }}:azure-future
+            azure.tags=ghcr.io/spacelift-io/runner-opentofu:azure-future
+            azure-fips.tags=${{ secrets.PUBLIC_RUNNER_OPENTOFU_ECR_REPOSITORY_URL }}:azure-future-fips
+            azure-fips.tags=ghcr.io/spacelift-io/runner-opentofu:azure-future-fips
+
