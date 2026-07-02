@@ -1,0 +1,208 @@
+name: Scheduled publish
+
+on:
+  schedule:
+    - cron: '20 8 * * 1'
+  workflow_dispatch:
+
+jobs:
+  create-tag:
+    name: Create weekly tag
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    outputs:
+      weekly_tag: ${{ steps.tag.outputs.TAG }}
+      latest_tag: ${{ steps.latest-tag.outputs.tag }}
+      today_formatted: ${{ steps.date.outputs.TODAY_FORMATTED }}
+
+    steps:
+      - name: Install datadog cli
+        shell: bash
+        run: npm install -g @datadog/datadog-ci
+
+      - name: Put normalized job name attribute in job metric
+        shell: bash
+        env:
+          DATADOG_SITE: datadoghq.eu
+          DATADOG_API_KEY: ${{ secrets.DATADOG_API_KEY }}
+        run: datadog-ci tag --level job --tags ci.job.group:runner-opentofu --tags env:prod
+
+      - name: Get latest tag
+        uses: oprypin/find-latest-tag@6957ac556fa6d349727ecabfcaaf9f8e5ee37124 # v1.1.3
+        id: latest-tag
+        with:
+          repository: ${{ github.repository }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Checkout repository code
+        uses: actions/checkout@main
+        with:
+          ref: ${{ steps.latest-tag.outputs.tag }}
+          fetch-depth: 0
+
+      - name: Set current date as env variable
+        id: date
+        run: |
+          echo "TODAY=$(date +'%Y%m%d')" >> $GITHUB_ENV
+          echo "TODAY_FORMATTED=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+
+      - name: Create weekly tag
+        id: tag
+        env:
+          TAG: ${{ steps.latest-tag.outputs.tag }}_${{ env.TODAY }}
+        run: |
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git config --global user.name "github-actions[bot]"
+          git tag -a $TAG -m "Weekly rebuild of ${{ steps.latest-tag.outputs.tag }}"
+          git push origin $TAG
+          echo "TAG=$TAG" >> $GITHUB_OUTPUT
+
+  build-aws:
+    name: Build and push weekly image (w/ aws cli)
+    runs-on: ubuntu-latest
+    needs: create-tag
+    permissions:
+      id-token: write
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout repository code
+        uses: actions/checkout@main
+        with:
+          ref: ${{ needs.create-tag.outputs.latest_tag }}
+          fetch-depth: 0
+
+      - name: Build and push weekly image (w/ aws cli)
+        uses: ./.github/workflows/publish
+        with:
+          bake_target: aws,aws-fips
+          aws_role_to_assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          bake_set: |
+            aws.tags=${{ secrets.PUBLIC_RUNNER_OPENTOFU_ECR_REPOSITORY_URL }}:latest
+            aws.tags=${{ secrets.PUBLIC_RUNNER_OPENTOFU_ECR_REPOSITORY_URL }}:${{ needs.create-tag.outputs.weekly_tag }}
+            aws.tags=ghcr.io/spacelift-io/runner-opentofu:latest
+            aws.tags=ghcr.io/spacelift-io/runner-opentofu:${{ needs.create-tag.outputs.weekly_tag }}
+            aws-fips.tags=${{ secrets.PUBLIC_RUNNER_OPENTOFU_ECR_REPOSITORY_URL }}:latest-fips
+            aws-fips.tags=${{ secrets.PUBLIC_RUNNER_OPENTOFU_ECR_REPOSITORY_URL }}:${{ needs.create-tag.outputs.weekly_tag }}-fips
+            aws-fips.tags=ghcr.io/spacelift-io/runner-opentofu:latest-fips
+            aws-fips.tags=ghcr.io/spacelift-io/runner-opentofu:${{ needs.create-tag.outputs.weekly_tag }}-fips
+
+  build-gcp:
+    name: Build and push weekly image (w/ gcloud cli)
+    runs-on: ubuntu-latest
+    needs: create-tag
+    permissions:
+      id-token: write
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout repository code
+        uses: actions/checkout@main
+        with:
+          ref: ${{ needs.create-tag.outputs.latest_tag }}
+          fetch-depth: 0
+
+      - name: Build and push weekly image (w/ gcloud cli)
+        uses: ./.github/workflows/publish
+        with:
+          bake_target: gcp,gcp-fips
+          aws_role_to_assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          bake_set: |
+            gcp.tags=${{ secrets.PUBLIC_RUNNER_OPENTOFU_ECR_REPOSITORY_URL }}:gcp-latest
+            gcp.tags=${{ secrets.PUBLIC_RUNNER_OPENTOFU_ECR_REPOSITORY_URL }}:gcp-${{ needs.create-tag.outputs.weekly_tag }}
+            gcp.tags=ghcr.io/spacelift-io/runner-opentofu:gcp-latest
+            gcp.tags=ghcr.io/spacelift-io/runner-opentofu:gcp-${{ needs.create-tag.outputs.weekly_tag }}
+            gcp-fips.tags=${{ secrets.PUBLIC_RUNNER_OPENTOFU_ECR_REPOSITORY_URL }}:gcp-latest-fips
+            gcp-fips.tags=${{ secrets.PUBLIC_RUNNER_OPENTOFU_ECR_REPOSITORY_URL }}:gcp-${{ needs.create-tag.outputs.weekly_tag }}-fips
+            gcp-fips.tags=ghcr.io/spacelift-io/runner-opentofu:gcp-latest-fips
+            gcp-fips.tags=ghcr.io/spacelift-io/runner-opentofu:gcp-${{ needs.create-tag.outputs.weekly_tag }}-fips
+
+  build-azure:
+    name: Build and push weekly image (w/ az cli)
+    runs-on: ubuntu-latest
+    needs: create-tag
+    permissions:
+      id-token: write
+      contents: write
+      packages: write
+
+    steps:
+      - name: Checkout repository code
+        uses: actions/checkout@main
+        with:
+          ref: ${{ needs.create-tag.outputs.latest_tag }}
+          fetch-depth: 0
+
+      - name: Build and push weekly image (w/ az cli)
+        uses: ./.github/workflows/publish
+        with:
+          bake_target: azure,azure-fips
+          aws_role_to_assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          bake_set: |
+            azure.tags=${{ secrets.PUBLIC_RUNNER_OPENTOFU_ECR_REPOSITORY_URL }}:azure-latest
+            azure.tags=${{ secrets.PUBLIC_RUNNER_OPENTOFU_ECR_REPOSITORY_URL }}:azure-${{ needs.create-tag.outputs.weekly_tag }}
+            azure.tags=ghcr.io/spacelift-io/runner-opentofu:azure-latest
+            azure.tags=ghcr.io/spacelift-io/runner-opentofu:azure-${{ needs.create-tag.outputs.weekly_tag }}
+            azure-fips.tags=${{ secrets.PUBLIC_RUNNER_OPENTOFU_ECR_REPOSITORY_URL }}:azure-latest-fips
+            azure-fips.tags=${{ secrets.PUBLIC_RUNNER_OPENTOFU_ECR_REPOSITORY_URL }}:azure-${{ needs.create-tag.outputs.weekly_tag }}-fips
+            azure-fips.tags=ghcr.io/spacelift-io/runner-opentofu:azure-latest-fips
+            azure-fips.tags=ghcr.io/spacelift-io/runner-opentofu:azure-${{ needs.create-tag.outputs.weekly_tag }}-fips
+
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [create-tag, build-aws, build-gcp, build-azure]
+    permissions:
+      contents: write
+
+    steps:
+      - name: Create release
+        uses: ncipollo/release-action@339a81892b84b4eeb0f6e744e4574d79d0d9b8dd # v1.21.0
+        with:
+          name: ${{ needs.create-tag.outputs.latest_tag }} - weekly release (${{ needs.create-tag.outputs.today_formatted }})
+          tag: ${{ needs.create-tag.outputs.weekly_tag }}
+          body: |
+            ## Weekly rebuild
+            This is a weekly rebuild of the latest image (`${{ needs.create-tag.outputs.latest_tag }}`).
+            The image is rebuilt to ensure that it is up to date with the latest security patches.
+            ## Updated images
+            ### Image with aws cli
+            - `${{ secrets.PUBLIC_RUNNER_OPENTOFU_ECR_REPOSITORY_URL }}:latest`
+            - `${{ secrets.PUBLIC_RUNNER_OPENTOFU_ECR_REPOSITORY_URL }}:${{ needs.create-tag.outputs.weekly_tag }}`
+            - `ghcr.io/spacelift-io/runner-opentofu:latest`
+            - `ghcr.io/spacelift-io/runner-opentofu:${{ needs.create-tag.outputs.weekly_tag }}`
+            #### Image with aws cli FIPS
+            - `${{ secrets.PUBLIC_RUNNER_OPENTOFU_ECR_REPOSITORY_URL }}:latest-fips`
+            - `${{ secrets.PUBLIC_RUNNER_OPENTOFU_ECR_REPOSITORY_URL }}:${{ needs.create-tag.outputs.weekly_tag }}-fips`
+            - `ghcr.io/spacelift-io/runner-opentofu:latest-fips`
+            - `ghcr.io/spacelift-io/runner-opentofu:${{ needs.create-tag.outputs.weekly_tag }}-fips`
+
+            ### Image with gcloud cli
+            - `${{ secrets.PUBLIC_RUNNER_OPENTOFU_ECR_REPOSITORY_URL }}:gcp-latest`
+            - `${{ secrets.PUBLIC_RUNNER_OPENTOFU_ECR_REPOSITORY_URL }}:gcp-${{ needs.create-tag.outputs.weekly_tag }}`
+            - `ghcr.io/spacelift-io/runner-opentofu:gcp-latest`
+            - `ghcr.io/spacelift-io/runner-opentofu:gcp-${{ needs.create-tag.outputs.weekly_tag }}`
+            #### Image with gcloud cli FIPS
+            - `${{ secrets.PUBLIC_RUNNER_OPENTOFU_ECR_REPOSITORY_URL }}:gcp-latest-fips`
+            - `${{ secrets.PUBLIC_RUNNER_OPENTOFU_ECR_REPOSITORY_URL }}:gcp-${{ needs.create-tag.outputs.weekly_tag }}-fips`
+            - `ghcr.io/spacelift-io/runner-opentofu:gcp-latest-fips`
+            - `ghcr.io/spacelift-io/runner-opentofu:gcp-${{ needs.create-tag.outputs.weekly_tag }}-fips`
+
+            ### Image with az cli
+            - `${{ secrets.PUBLIC_RUNNER_OPENTOFU_ECR_REPOSITORY_URL }}:azure-latest`
+            - `${{ secrets.PUBLIC_RUNNER_OPENTOFU_ECR_REPOSITORY_URL }}:azure-${{ needs.create-tag.outputs.weekly_tag }}`
+            - `ghcr.io/spacelift-io/runner-opentofu:azure-latest`
+            - `ghcr.io/spacelift-io/runner-opentofu:azure-${{ needs.create-tag.outputs.weekly_tag }}`
+            #### Image with az cli FIPS
+            - `${{ secrets.PUBLIC_RUNNER_OPENTOFU_ECR_REPOSITORY_URL }}:azure-latest-fips`
+            - `${{ secrets.PUBLIC_RUNNER_OPENTOFU_ECR_REPOSITORY_URL }}:azure-${{ needs.create-tag.outputs.weekly_tag }}-fips`
+            - `ghcr.io/spacelift-io/runner-opentofu:azure-latest-fips`
+            - `ghcr.io/spacelift-io/runner-opentofu:azure-${{ needs.create-tag.outputs.weekly_tag }}-fips`
+          generateReleaseNotes: true
+          allowUpdates: true

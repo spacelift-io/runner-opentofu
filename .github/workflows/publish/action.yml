@@ -1,0 +1,57 @@
+name: Publish
+description: Builds and pushes the Docker image to the public ECR and GitHub registry
+
+inputs:
+  bake_target:
+    description: The target of the bake action
+    required: true
+  aws_role_to_assume:
+    description: The AWS role to assume. Used to authenticate with ECR.
+    required: true
+  github_token:
+    description: The GitHub token. Used to authenticate with GitHub registry.
+    required: true
+  bake_set:
+    description: The `set` argument of the bake action
+    required: true
+
+runs:
+  using: composite
+  steps:
+      - name: Configure AWS credentials for public ECR
+        uses: aws-actions/configure-aws-credentials@61815dcd50bd041e203e49132bacad1fd04d2708 # v5.1.1
+        with:
+          aws-region: us-east-1
+          role-to-assume: ${{ inputs.aws_role_to_assume }}
+          role-duration-seconds: 900
+
+      - name: Login to Amazon ECR Public
+        uses: aws-actions/amazon-ecr-login@d539f0932e70871a027e9d5a9d8fc38589180a64 # v2.1.6
+        with:
+          registry-type: public
+
+      - name: Log in to GitHub registry
+        uses: docker/login-action@c94ce9fb468520275223c153574b00df6fe4bcc9 # v3.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ inputs.github_token }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@c7c53464625b32c7a7e944ae62b3e17d2b600130 # v3.7.0
+        with:
+          platforms: linux/arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3.12.0
+      
+      - name: Clean up space
+        shell: bash
+        run: docker system prune -af 
+
+      - name: Build and push the image
+        uses: docker/bake-action@6614cfa25eff9a0b2b2697efb0b6159e7680d584 # v7.2.0
+        with:
+          push: true
+          targets: ${{ inputs.bake_target }}
+          set: ${{ inputs.bake_set }}

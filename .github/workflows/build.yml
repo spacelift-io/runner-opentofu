@@ -1,0 +1,41 @@
+name: Build
+
+on:
+  pull_request:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  deployment:
+    strategy:
+      matrix:
+        target: [aws, gcp, azure]
+        platform: [linux/amd64, linux/arm64]
+    name: Build the image
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@main
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
+        if: matrix.platform == 'linux/arm64'
+        with:
+          platforms: linux/arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
+
+      - name: Bake the ${{ matrix.target }} image 
+        uses: docker/bake-action@6614cfa25eff9a0b2b2697efb0b6159e7680d584 # v7.2.0
+        with:
+          targets: ${{ matrix.target }},${{ matrix.target }}-fips
+          load: true
+          set: |
+            ${{ matrix.target }}.tags=runner-opentofu:${{ github.sha }}
+            ${{ matrix.target }}.platform=${{ matrix.platform }}
+            ${{ matrix.target }}-fips.tags=runner-opentofu:${{ github.sha }}-fips
+            ${{ matrix.target }}-fips.platform=${{ matrix.platform }}
