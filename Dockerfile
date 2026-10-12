@@ -67,7 +67,7 @@ ENV PATH="/opt/venv/bin:$PATH"
 
 COPY --from=azure-build /opt/venv /opt/venv
 
-RUN apk add --no-cache az --version && \
+RUN az --version && \
     python --version && \
     infracost --version && \
     spaceforge --version
